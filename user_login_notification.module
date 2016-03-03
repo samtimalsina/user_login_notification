@@ -1,0 +1,132 @@
+<?php
+//
+///**
+// * Implements hook_menu().
+// */
+//function user_login_notification_menu() {
+//  $items['regions'] = array(
+//    'title' => 'Regions',
+//    'description' => 'Front for Barcode Database',
+//    'page callback' => '_user_login_notification_regions',
+//    'access arguments' => array('view content'),
+//  );
+//  return $items;
+//}
+
+/**
+ * Implements hook_block_info().
+ */
+function user_login_notification_block_info() {
+  $blocks['user_login_notification_message'] = array(
+    'info' => t('User Login Notification'),
+    'status' => TRUE,
+    'region' => _user_login_notification_left_side_rail(),
+    'visibility' => BLOCK_VISIBILITY_NOTLISTED,
+    'cache' => DRUPAL_NO_CACHE, //Todo: Implement DRUPAL_CACHE_CUSTOM
+  );
+  return $blocks;
+}
+
+
+/**
+ * Implements hook_block_configure().
+ *
+ * This hook declares configuration options for blocks provided by this module.
+ */
+function user_login_notification_block_configure($delta = '') {
+  $form = array();
+  if ($delta == 'user_login_notification_message') {
+    $roles = user_roles(TRUE);
+    foreach($roles as $rid => $role_name) {
+      $form['user_login_notification_text_' . $rid] = array(
+        '#type' => 'textfield',
+        '#title' => t('Message for Role :role', array(':role' => $role_name)),
+        '#size' => 60,
+        '#description' => t('Personalized message for role.'),
+        '#default_value' => variable_get('user_login_notification_text_' . $rid, t('You last logged in at')),
+      );
+    }
+  }
+  return $form;
+}
+
+/**
+ * Implements hook_block_save().
+ *
+ * This hook declares how the configured options for a block
+ * provided by this module are saved.
+ */
+function user_login_notification_block_save($delta = '', $edit = array()) {
+  if ($delta == 'user_login_notification_message') {
+    $roles = user_roles(TRUE);
+    foreach($roles as $rid => $role_name) {
+      variable_set('user_login_notification_text_' . $rid, $edit['user_login_notification_text_' . $rid]);
+    }
+  }
+}
+
+/**
+ * Implements hook_block_view().
+ *
+ * This hook generates the contents of the blocks themselves.
+ */
+function user_login_notification_block_view($delta = '') {
+  global $user;
+  if ($user->uid == 0) {
+    return NULL;
+  }
+  $role = user_role_load_by_name(array_pop($user->roles));
+  $block = array();
+  switch ($delta) {
+    case 'user_login_notification_message':
+      $block['subject'] = t('Welcome Back :user', array(':user' => $user->name));
+      $block['content'] = array(
+        '#markup' => theme('user_login_notification', array(
+          'last_login' => format_date($user->login,'custom','m/d/Y - H:i T',$user->timezone),
+          'personalized_message' => variable_get('user_login_notification_text_' . $role->rid, t('You last logged in at'))
+        )),
+        '#attached' => array(
+          'js' => array(
+            drupal_get_path('module', 'user_login_notification') . '/js/user_login_notification.js'
+          ),
+        ),
+      );
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function user_login_notification_theme($existing, $type, $theme, $path) {
+  return array(
+    'user_login_notification' => array(
+      'template' => 'user-login-notification-message',
+      'path' => drupal_get_path('module', 'user_login_notification') . '/templates',
+    ),
+  );
+}
+
+/**
+ * @return int
+ */
+function _user_login_notification_left_side_rail() {
+  global $theme;
+  $theme_regions = system_region_list($theme, REGIONS_VISIBLE);
+  $side_rail_regions = array('left', 'sidebar_first', 'sidebar');
+  foreach ($side_rail_regions as $side_rail_region) {
+    if (array_key_exists($side_rail_region, $theme_regions))
+      return $side_rail_region;
+  }
+  return -1;
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function user_login_notification_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'ctools' && !empty($plugin)) {
+    return "plugins/$plugin";
+  }
+}
